@@ -4,26 +4,49 @@ import { useState } from 'react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
+const OFFLINE_KNOWLEDGE: Record<string, string> = {
+  "default": "No momento estou offline, mas lembre-se: 'Lâmpada para os meus pés é tua palavra, e luz para o meu caminho.' (Salmos 119:105). Procure meditar na Bíblia diariamente!",
+  "jesus": "Jesus Cristo é o Filho de Deus e Salvador do mundo. Ele disse: 'Eu sou o caminho, e a verdade e a vida; ninguém vem ao Pai, senão por mim.' (João 14:6).",
+  "fe": "A fé é o firme fundamento das coisas que se esperam, e a prova das coisas que se não veem (Hebreus 11:1).",
+  "amor": "O amor é sofredor, é benigno; o amor não é invejoso; o amor não trata com leviandade, não se ensoberbece (1 Coríntios 13:4).",
+  "oracao": "Orai sem cessar. Em tudo dai graças, porque esta é a vontade de Deus em Cristo Jesus para convosco (1 Tessalonicenses 5:17-18).",
+  "salvacao": "Porque pela graça sois salvos, por meio da fé; e isto não vem de vós, é dom de Deus (Efésios 2:8).",
+};
+
 export function useAIPreacher() {
   const [loading, setLoading] = useState(false);
 
   const askQuestion = async (question: string) => {
+    if (!navigator.onLine) {
+      return handleOffline(question);
+    }
+
     setLoading(true);
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: question,
         config: {
-          systemInstruction: "Você é o Assistente Salomão Muanjita, um conselheiro cristão sábio e acolhedor. Sua missão é responder perguntas bíblicas, oferecer consolo espiritual e explicar doutrinas da fé cristã de forma clara e baseada na Bíblia (Almeida Revista e Corrigida). Seja breve, direto e use versículos para fundamentar suas respostas.",
+          systemInstruction: "Você é o Assistente Salomão Muanjita, um conselheiro cristão sábio e acolhedor. Sua missão é responder perguntas bíblicas, oferecer consolo espiritual e explicar doutrinas da fé cristã de forma clara e baseada na Bíblia (Almeida Revista e Corrigida). Seja breve, direto e use versículos para fundamentar suas respostas. Se o usuário estiver triste, console-o. Se tiver dúvidas, explique com paciência.",
         },
       });
       return response.text;
     } catch (error) {
       console.error("Erro no Agente Pregador:", error);
-      return "Desculpe, tive um problema ao buscar sua resposta. Tente novamente em breve.";
+      return handleOffline(question);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOffline = (question: string) => {
+    const q = question.toLowerCase();
+    if (q.includes("jesus")) return OFFLINE_KNOWLEDGE["jesus"];
+    if (q.includes("fé")) return OFFLINE_KNOWLEDGE["fe"];
+    if (q.includes("amor")) return OFFLINE_KNOWLEDGE["amor"];
+    if (q.includes("oração")) return OFFLINE_KNOWLEDGE["oracao"];
+    if (q.includes("salvação")) return OFFLINE_KNOWLEDGE["salvacao"];
+    return OFFLINE_KNOWLEDGE["default"];
   };
 
   const generateStudy = async (title: string, target: string) => {

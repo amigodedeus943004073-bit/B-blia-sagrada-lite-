@@ -27,8 +27,6 @@ export function useBible() {
     setLoading(true);
     setError(null);
     try {
-      // Mocking some local data for "Lite" offline feel if needed, 
-      // but for this demo we fetch from a reliable API
       const response = await fetch(`https://bible-api.com/${book}+${chapter}?translation=${TRANSLATION}`);
       if (!response.ok) throw new Error('Falha ao carregar capítulo');
       const data = await response.json();

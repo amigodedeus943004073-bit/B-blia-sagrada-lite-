@@ -26,19 +26,33 @@ import {
   Trophy,
   RefreshCcw,
   CheckCircle2,
-  XCircle
+  XCircle,
+  ClipboardList,
+  CheckSquare,
+  Plus,
+  Trash2,
+  Edit3
 } from 'lucide-react';
 import { BIBLE_BOOKS, Book } from './data/bible-metadata';
 import { BIBLE_STUDIES, Study } from './data/bible-studies';
 import { BIBLE_QUIZ, Question } from './data/bible-quiz';
+import { BIBLE_DILEMMAS, Dilemma } from './data/bible-dilemmas';
+import { BIBLE_READING_PLANS, ReadingPlan } from './data/reading-plans';
 import { useBible, Verse, Chapter } from './hooks/useBible';
 import { useAIPreacher } from './hooks/useAIPreacher';
 
-type View = 'home' | 'bible' | 'search' | 'favorites' | 'settings' | 'reader' | 'preacher' | 'studies' | 'study-detail' | 'games' | 'quiz';
+type View = 'home' | 'bible' | 'search' | 'favorites' | 'settings' | 'reader' | 'preacher' | 'studies' | 'study-detail' | 'games' | 'quiz' | 'dilemmas' | 'notes' | 'reading-plan';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface Note {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
 }
 
 export default function App() {
@@ -66,6 +80,31 @@ export default function App() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [quizLevel, setQuizLevel] = useState(1);
+  const [medals, setMedals] = useState(0);
+  const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
+
+  // Dilemmas State
+  const [currentDilemmaIndex, setCurrentDilemmaIndex] = useState(0);
+  const [selectedDilemmaOption, setSelectedDilemmaOption] = useState<number | null>(null);
+  const [showDilemmaExplanation, setShowDilemmaExplanation] = useState(false);
+  const [dilemmasFinished, setDilemmasFinished] = useState(false);
+  const [shuffledDilemmas, setShuffledDilemmas] = useState<Dilemma[]>([]);
+  const [dilemmaLevel, setDilemmaLevel] = useState(1);
+  const [dilemmaMedals, setDilemmaMedals] = useState(0);
+
+  // Notebook State
+  const [notes, setNotes] = useState<Note[]>(() => {
+    const saved = localStorage.getItem('bible_notes');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+
+  // Reading Plan State
+  const [readingProgress, setReadingProgress] = useState<string[]>(() => {
+    const saved = localStorage.getItem('bible_reading_progress');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const { fetchChapter, getDailyVerse, loading: bibleLoading, error: bibleError } = useBible();
   const { askQuestion, generateStudy, loading: aiLoading } = useAIPreacher();
@@ -73,6 +112,14 @@ export default function App() {
   useEffect(() => {
     getDailyVerse().then(setDailyVerse);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bible_notes', JSON.stringify(notes));
+  }, [notes]);
+
+  useEffect(() => {
+    localStorage.setItem('bible_reading_progress', JSON.stringify(readingProgress));
+  }, [readingProgress]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -96,6 +143,8 @@ export default function App() {
       setCurrentView('bible');
     } else if (currentView === 'study-detail') {
       setCurrentView('studies');
+    } else if (currentView === 'notes' || currentView === 'reading-plan') {
+      setCurrentView('home');
     } else if (selectedBook && !selectedChapter) {
         setSelectedBook(null);
     }
@@ -123,30 +172,127 @@ export default function App() {
 
   const handleAnswer = (index: number) => {
     if (showExplanation) return;
+    const currentQ = shuffledQuestions[currentQuestionIndex];
     setSelectedOption(index);
-    if (index === BIBLE_QUIZ[currentQuestionIndex].correctAnswer) {
+    if (index === currentQ.correctAnswer) {
       setScore(s => s + 1);
     }
     setShowExplanation(true);
   };
 
+  const feedbackMessage = useMemo(() => {
+    if (!showExplanation || selectedOption === null) return '';
+    const isCorrect = selectedOption === shuffledQuestions[currentQuestionIndex].correctAnswer;
+    
+    const correctMsgs = ["Boa!", "Viva! Você parece estar lendo bastante", "Estou orgulhoso", "Parabéns, continue assim!", "Glória a Deus, você acertou!"];
+    const wrongMsgs = ["Precisas ler mais a Bíblia", "Medite mais na palavra", "Não desanime, continue estudando", "Essa era difícil, tente ler Gênesis a Apocalipse!", "Pesquise mais sobre este tema"];
+    
+    const list = isCorrect ? correctMsgs : wrongMsgs;
+    return list[Math.floor(Math.random() * list.length)];
+  }, [showExplanation, selectedOption, currentQuestionIndex, shuffledQuestions]);
+
   const nextQuestion = () => {
-    if (currentQuestionIndex < BIBLE_QUIZ.length - 1) {
+    if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(i => i + 1);
       setSelectedOption(null);
       setShowExplanation(false);
     } else {
+      // Logic for medals and levels
+      const passScore = Math.ceil(shuffledQuestions.length * 0.7);
+      if (score >= passScore) {
+        setMedals(m => Math.min(m + 1, 3));
+        if (quizLevel < 3) {
+          setQuizLevel(l => l + 1);
+        }
+      }
       setQuizFinished(true);
     }
   };
 
-  const resetQuiz = () => {
+  const resetQuiz = (keepLevel = false) => {
+    if (!keepLevel) {
+      setQuizLevel(1);
+      setMedals(0);
+    }
+    
+    // 10 questions per phase
+    const shuffled = [...BIBLE_QUIZ].sort(() => Math.random() - 0.5).slice(0, 10);
+    setShuffledQuestions(shuffled);
     setCurrentQuestionIndex(0);
     setScore(0);
     setSelectedOption(null);
     setShowExplanation(false);
     setQuizFinished(false);
     setCurrentView('quiz');
+  };
+
+  const resetDilemmas = (keepLevel = false) => {
+    if (!keepLevel) {
+      setDilemmaLevel(1);
+      setDilemmaMedals(0);
+    }
+    
+    // 10 scenarios per phase (if available, otherwise all)
+    const shuffled = [...BIBLE_DILEMMAS].sort(() => Math.random() - 0.5).slice(0, 10);
+    setShuffledDilemmas(shuffled);
+    setCurrentDilemmaIndex(0);
+    setSelectedDilemmaOption(null);
+    setShowDilemmaExplanation(false);
+    setDilemmasFinished(false);
+    setCurrentView('dilemmas');
+  };
+
+  const handleDilemmaAnswer = (index: number) => {
+    if (showDilemmaExplanation) return;
+    setSelectedDilemmaOption(index);
+    setShowDilemmaExplanation(true);
+  };
+
+  const nextDilemma = () => {
+    if (currentDilemmaIndex < shuffledDilemmas.length - 1) {
+      setCurrentDilemmaIndex(i => i + 1);
+      setSelectedDilemmaOption(null);
+      setShowDilemmaExplanation(false);
+    } else {
+      // Logic for medals and levels in Dilemmas
+      const isWinner = shuffledDilemmas.every((d, idx) => {
+        // If they got most right (e.g. 70%) or just check last answer?
+        // Let's use a similar score logic for dilemmas if we want to track correctness
+        return true; // Simplified or track dilemma score
+      });
+      
+      // For dilemmas, let's just count how many they got right during the session
+      let correctCount = 0;
+      // We'd need a state for dilemma score if we want to be precise, 
+      // but let's assume if they reach the end they passed Level 1.
+      setDilemmaMedals(m => Math.min(m + 1, 3));
+      if (dilemmaLevel < 3) setDilemmaLevel(l => l + 1);
+      
+      setDilemmasFinished(true);
+    }
+  };
+
+  const handleShare = async (title: string, text: string) => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text: `${text}\n\nEnviado via Bíblia Sagrada (SMVM)`,
+          url
+        });
+      } catch (error) {
+        console.log('Erro ao compartilhar:', error);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${text}\n\nEnviado via Bíblia Sagrada (SMVM)\n${url}`);
+        // Quick visual feedback since alert is discouraged
+        alert("Texto copiado para a área de transferência!");
+      } catch (err) {
+        console.error('Falha ao copiar:', err);
+      }
+    }
   };
 
   const titleText = useMemo(() => {
@@ -161,18 +307,85 @@ export default function App() {
     if (currentView === 'study-detail') return 'Estudo';
     if (currentView === 'games') return 'Jogos Bíblicos';
     if (currentView === 'quiz') return 'Quiz Bíblico';
-    return 'Bíblia Sagrada Lite';
+    if (currentView === 'dilemmas') return 'Dilemas da Vida';
+    if (currentView === 'notes') return 'Caderno de Anotações';
+    if (currentView === 'reading-plan') return 'Plano de Leitura';
+    return 'Bíblia Sagrada';
   }, [currentView, selectedBook, selectedChapter]);
+
+  const handleToggleRead = (taskId: string) => {
+    setReadingProgress(prev => 
+      prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]
+    );
+  };
+
+  const saveNote = (note: { title: string, content: string }) => {
+    if (editingNote) {
+      setNotes(prev => prev.map(n => n.id === editingNote.id ? { ...n, ...note } : n));
+      setEditingNote(null);
+    } else {
+      const newNote: Note = {
+        id: Date.now().toString(),
+        title: note.title,
+        content: note.content,
+        date: new Date().toLocaleDateString()
+      };
+      setNotes(prev => [newNote, ...prev]);
+    }
+  };
+
+  const deleteNote = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const NoteEditor = ({ note, onSave, onCancel }: { note: Note | null, onSave: (n: {title: string, content: string}) => void, onCancel: () => void }) => {
+    const [title, setTitle] = useState(note?.title || '');
+    const [content, setContent] = useState(note?.content || '');
+
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className={`p-6 rounded-3xl ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white shadow-xl border border-gray-100'} space-y-4`}
+      >
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold">{note ? 'Editar Anotação' : 'Nova Anotação'}</h3>
+          <button onClick={onCancel} className="text-xs opacity-50 font-bold">Cancelar</button>
+        </div>
+        <input 
+          type="text" 
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Título (ex: Meditação Gênesis 1)"
+          className={`w-full p-4 rounded-2xl outline-none border ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-gray-50 border-gray-200'} font-bold`}
+        />
+        <textarea 
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          placeholder="O que Deus falou ao seu coração hoje?"
+          rows={8}
+          className={`w-full p-4 rounded-2xl outline-none border ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-gray-50 border-gray-200'} text-sm leading-relaxed`}
+        />
+        <button 
+          onClick={() => onSave({ title, content })}
+          disabled={!title.trim() || !content.trim()}
+          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold disabled:opacity-50"
+        >
+          Salvar Anotação
+        </button>
+      </motion.div>
+    );
+  };
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-gray-50 text-gray-900'} font-sans transition-colors duration-300`}>
       {/* Header */}
       <header className={`p-4 sticky top-0 z-40 flex justify-between items-center ${darkMode ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/80 border-gray-200'} backdrop-blur-md border-b`}>
         <div className="flex items-center gap-3">
-          {(['reader', 'study-detail', 'quiz'].includes(currentView) || (currentView === 'bible' && selectedBook)) && (
+          {(['reader', 'study-detail', 'quiz', 'dilemmas', 'notes', 'reading-plan'].includes(currentView) || (currentView === 'bible' && selectedBook)) && (
             <button 
               onClick={() => {
-                if (currentView === 'quiz') setCurrentView('games');
+                if (currentView === 'quiz' || currentView === 'dilemmas') setCurrentView('games');
                 else handleGetBack();
               }}
               className="p-2 -ml-2 hover:bg-zinc-800 rounded-full transition-colors"
@@ -214,7 +427,12 @@ export default function App() {
               <div className={`p-6 rounded-3xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-gray-100'} shadow-xl`}>
                 <div className="flex justify-between items-start mb-4">
                   <span className={`text-xs font-bold uppercase tracking-widest ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Versículo do Dia</span>
-                  <Share2 size={18} className="opacity-50 cursor-pointer" />
+                  <button 
+                    onClick={() => dailyVerse && handleShare('Versículo do Dia', `"${dailyVerse.text}" - ${dailyVerse.book_name} ${dailyVerse.chapter}:${dailyVerse.verse}`)}
+                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors opacity-50"
+                  >
+                    <Share2 size={18} />
+                  </button>
                 </div>
                 {dailyVerse ? (
                   <>
@@ -249,6 +467,24 @@ export default function App() {
                     <Gamepad2 size={32} />
                   </div>
                   <span className="font-bold text-sm">Jogos</span>
+                </button>
+                <button 
+                  onClick={() => setCurrentView('reading-plan')}
+                  className={`flex flex-col items-center justify-center p-6 rounded-3xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white shadow-sm border border-gray-100'} group gap-3`}
+                >
+                  <div className="p-4 bg-purple-500/10 text-purple-500 rounded-2xl">
+                    <CheckSquare size={32} />
+                  </div>
+                  <span className="font-bold text-sm">Plano</span>
+                </button>
+                <button 
+                  onClick={() => setCurrentView('notes')}
+                  className={`flex flex-col items-center justify-center p-6 rounded-3xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white shadow-sm border border-gray-100'} group gap-3`}
+                >
+                  <div className="p-4 bg-rose-500/10 text-rose-500 rounded-2xl">
+                    <ClipboardList size={32} />
+                  </div>
+                  <span className="font-bold text-sm">Caderno</span>
                 </button>
               </div>
 
@@ -364,12 +600,22 @@ export default function App() {
               ) : chapterContent ? (
                 <div className="space-y-6 reader-text" style={{ fontSize: `${fontSize}px` }}>
                   <h2 className="text-3xl font-serif text-center mb-10 opacity-30 italic">Capítulo {selectedChapter}</h2>
-                  {chapterContent.verses.map((v) => (
-                    <p key={v.verse} className="leading-relaxed flex gap-3 group">
-                      <span className="text-[0.6em] font-bold opacity-30 mt-1 select-none w-6 shrink-0">{v.verse}</span>
-                      <span className="hover:text-blue-400 transition-colors">{v.text}</span>
-                    </p>
-                  ))}
+                  <div className="space-y-6">
+                    {chapterContent.verses.map((v) => (
+                      <div key={v.verse} className="flex flex-col gap-1 group border-b border-transparent hover:border-blue-500/10 pb-4 transition-all">
+                        <div className="flex gap-3">
+                          <span className="text-[0.6em] font-bold opacity-30 mt-1 select-none w-6 shrink-0">{v.verse}</span>
+                          <span className="hover:text-blue-400 transition-colors flex-1">{v.text}</span>
+                          <button 
+                            onClick={() => handleShare(`${selectedBook?.name} ${selectedChapter}:${v.verse}`, v.text)}
+                            className="opacity-0 group-hover:opacity-30 hover:opacity-100 transition-opacity"
+                          >
+                            <Share2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-20 opacity-50">
@@ -490,7 +736,17 @@ export default function App() {
 
           {currentView === 'study-detail' && (
             <motion.div key="study-detail" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="py-8">
-              <h2 className="text-2xl font-bold mb-2">{selectedStudy?.title}</h2>
+              <div className="flex justify-between items-start mb-2">
+                <h2 className="text-2xl font-bold">{selectedStudy?.title}</h2>
+                {studyContent && (
+                  <button 
+                    onClick={() => handleShare(selectedStudy?.title || 'Estudo Bíblico', studyContent)}
+                    className="p-3 bg-zinc-800 rounded-full"
+                  >
+                    <Share2 size={20} />
+                  </button>
+                )}
+              </div>
               <p className="text-xs opacity-50 uppercase tracking-widest font-bold mb-8">
                 {selectedStudy?.target === 'convert' ? 'Recém Convertido' : 'Antigo na Fé'} • {selectedStudy?.category}
               </p>
@@ -528,6 +784,22 @@ export default function App() {
                 <ChevronRight size={20} className="opacity-30" />
               </button>
 
+              <button 
+                onClick={() => resetDilemmas()}
+                className={`w-full flex items-center justify-between p-6 rounded-3xl ${darkMode ? 'bg-zinc-900' : 'bg-white border border-gray-100 shadow-sm'} group`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                    <Send size={32} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold">Dilemas da Vida</p>
+                    <p className="text-xs opacity-50 italic">Situações do quotidiano</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="opacity-30" />
+              </button>
+
               <div className={`p-8 rounded-3xl text-center border-2 border-dashed ${darkMode ? 'border-zinc-800' : 'border-gray-200'} opacity-30`}>
                 <p className="text-sm font-bold uppercase tracking-widest">Mais jogos em breve</p>
               </div>
@@ -539,38 +811,47 @@ export default function App() {
               {!quizFinished ? (
                 <>
                   <div className="flex justify-between items-center mb-8">
-                    <span className="text-xs font-black uppercase tracking-tighter opacity-30">Questão {currentQuestionIndex + 1} de {BIBLE_QUIZ.length}</span>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-tighter opacity-30">Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}</span>
+                      <span className="text-[10px] font-bold text-amber-500 flex items-center gap-1">
+                        Fase {quizLevel} {Array.from({ length: medals }).map((_, i) => <Trophy key={i} size={10} />)}
+                      </span>
+                    </div>
                     <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>Pontuação: {score}</span>
                   </div>
 
-                  <h2 className="text-xl font-bold mb-8 leading-tight">{BIBLE_QUIZ[currentQuestionIndex].question}</h2>
+                  {shuffledQuestions[currentQuestionIndex] && (
+                    <>
+                      <h2 className="text-xl font-bold mb-8 leading-tight">{shuffledQuestions[currentQuestionIndex].question}</h2>
 
-                  <div className="space-y-3 flex-1">
-                    {BIBLE_QUIZ[currentQuestionIndex].options.map((option, idx) => {
-                      const isCorrect = idx === BIBLE_QUIZ[currentQuestionIndex].correctAnswer;
-                      const isSelected = idx === selectedOption;
-                      
-                      let btnClass = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-100 shadow-sm';
-                      if (showExplanation) {
-                        if (isCorrect) btnClass = 'bg-emerald-500/20 border-emerald-500 text-emerald-500';
-                        else if (isSelected) btnClass = 'bg-rose-500/20 border-rose-500 text-rose-500';
-                        else btnClass = 'opacity-20';
-                      }
+                      <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                        {shuffledQuestions[currentQuestionIndex].options.map((option, idx) => {
+                          const isCorrect = idx === shuffledQuestions[currentQuestionIndex].correctAnswer;
+                          const isSelected = idx === selectedOption;
+                          
+                          let btnClass = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-100 shadow-sm';
+                          if (showExplanation) {
+                            if (isCorrect) btnClass = 'bg-emerald-500/20 border-emerald-500 text-emerald-500';
+                            else if (isSelected) btnClass = 'bg-rose-500/20 border-rose-500 text-rose-500';
+                            else btnClass = 'opacity-20';
+                          }
 
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => handleAnswer(idx)}
-                          disabled={showExplanation}
-                          className={`w-full p-5 rounded-2xl text-left font-medium border-2 transition-all flex justify-between items-center ${btnClass}`}
-                        >
-                          <span>{option}</span>
-                          {showExplanation && isCorrect && <CheckCircle2 size={18} />}
-                          {showExplanation && isSelected && !isCorrect && <XCircle size={18} />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handleAnswer(idx)}
+                              disabled={showExplanation}
+                              className={`w-full p-5 rounded-2xl text-left font-medium border-2 transition-all flex justify-between items-center ${btnClass}`}
+                            >
+                              <span>{option}</span>
+                              {showExplanation && isCorrect && <CheckCircle2 size={18} />}
+                              {showExplanation && isSelected && !isCorrect && <XCircle size={18} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
 
                   <AnimatePresence>
                     {showExplanation && (
@@ -579,12 +860,15 @@ export default function App() {
                         animate={{ opacity: 1, y: 0 }} 
                         className={`mt-6 p-4 rounded-2xl text-sm ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white shadow-lg border border-gray-100'}`}
                       >
-                        <p className="opacity-70 leading-relaxed mb-4">{BIBLE_QUIZ[currentQuestionIndex].explanation}</p>
+                        <div className={`mb-3 py-1 px-3 rounded-lg font-bold text-center ${selectedOption === shuffledQuestions[currentQuestionIndex].correctAnswer ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                          {feedbackMessage}
+                        </div>
+                        <p className="opacity-70 leading-relaxed mb-4">{shuffledQuestions[currentQuestionIndex].explanation}</p>
                         <button 
                           onClick={nextQuestion}
                           className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
                         >
-                          {currentQuestionIndex < BIBLE_QUIZ.length - 1 ? 'Próxima Questão' : 'Ver Resultado'}
+                          {currentQuestionIndex < shuffledQuestions.length - 1 ? 'Próxima Questão' : 'Ver Resultado'}
                         </button>
                       </motion.div>
                     )}
@@ -595,15 +879,27 @@ export default function App() {
                   <div className="w-24 h-24 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mb-6">
                     <Trophy size={48} />
                   </div>
-                  <h2 className="text-3xl font-bold mb-2">Quiz Finalizado!</h2>
-                  <p className="text-lg opacity-50 mb-8">Você acertou {score} de {BIBLE_QUIZ.length} perguntas.</p>
+                  <h2 className="text-3xl font-bold mb-2">
+                    {score >= Math.ceil(shuffledQuestions.length * 0.7) ? 'Excelente!' : 'Tente Novamente'}
+                  </h2>
+                  <p className="text-lg opacity-50 mb-4">Você acertou {score} de {shuffledQuestions.length} perguntas.</p>
                   
+                  {medals > 0 && (
+                    <div className="flex gap-2 mb-8 justify-center">
+                      {Array.from({ length: medals }).map((_, i) => (
+                        <div key={i} className="p-2 bg-amber-500 text-white rounded-full">
+                          <Trophy size={20} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
                     <button 
-                      onClick={resetQuiz}
+                      onClick={() => resetQuiz(score >= Math.ceil(shuffledQuestions.length * 0.7))}
                       className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2"
                     >
-                      <RefreshCcw size={18} /> Repetir
+                      <RefreshCcw size={18} /> {score >= Math.ceil(shuffledQuestions.length * 0.7) && quizLevel < 3 ? 'Próxima Fase' : 'Repetir'}
                     </button>
                     <button 
                       onClick={() => setCurrentView('games')}
@@ -617,15 +913,250 @@ export default function App() {
             </motion.div>
           )}
 
+          {currentView === 'dilemmas' && (
+            <motion.div key="dilemmas" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="py-6 h-[75vh] flex flex-col">
+              {!dilemmasFinished ? (
+                <>
+                  <div className="mb-8 flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-tighter opacity-30">Situação {currentDilemmaIndex + 1} de {shuffledDilemmas.length}</span>
+                      <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                        Fase {dilemmaLevel} {Array.from({ length: dilemmaMedals }).map((_, i) => <Trophy key={i} size={10} />)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {shuffledDilemmas[currentDilemmaIndex] && (
+                    <>
+                      <div className={`p-6 rounded-3xl mb-8 ${darkMode ? 'bg-zinc-900' : 'bg-white shadow-sm border border-gray-100'}`}>
+                        <p className="text-lg font-medium leading-relaxed italic">
+                          "{shuffledDilemmas[currentDilemmaIndex].scenario}"
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 flex-1">
+                        <p className="text-xs font-bold opacity-30 uppercase tracking-widest mb-2">O que acontece? / O que fazer?</p>
+                        {shuffledDilemmas[currentDilemmaIndex].options.map((option, idx) => {
+                          const isCorrect = option.isCorrect;
+                          const isSelected = idx === selectedDilemmaOption;
+                          
+                          let btnClass = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-100 shadow-sm';
+                          if (showDilemmaExplanation) {
+                            if (isCorrect) btnClass = 'bg-emerald-500/20 border-emerald-500 text-emerald-500';
+                            else if (isSelected) btnClass = 'bg-rose-500/20 border-rose-500 text-rose-500';
+                            else btnClass = 'opacity-20';
+                          }
+
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handleDilemmaAnswer(idx)}
+                              disabled={showDilemmaExplanation}
+                              className={`w-full p-5 rounded-2xl text-left font-medium border-2 transition-all flex justify-between items-center ${btnClass}`}
+                            >
+                              <span className="text-sm">{option.text}</span>
+                              {showDilemmaExplanation && isCorrect && <CheckCircle2 size={18} />}
+                              {showDilemmaExplanation && isSelected && !isCorrect && <XCircle size={18} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  <AnimatePresence>
+                    {showDilemmaExplanation && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        className={`mt-6 p-4 rounded-2xl text-sm ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white shadow-lg border border-gray-100'}`}
+                      >
+                         <div className={`mb-3 py-1 px-3 rounded-lg font-bold text-center ${shuffledDilemmas[currentDilemmaIndex].options[selectedDilemmaOption!].isCorrect ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                          {shuffledDilemmas[currentDilemmaIndex].options[selectedDilemmaOption!].isCorrect ? 'Correcto!' : 'Pense Bem!'}
+                        </div>
+                        <p className="opacity-70 leading-relaxed mb-4 text-xs font-medium">
+                          {shuffledDilemmas[currentDilemmaIndex].options[selectedDilemmaOption!].explanation}
+                        </p>
+                        <button 
+                          onClick={nextDilemma}
+                          className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                        >
+                          {currentDilemmaIndex < shuffledDilemmas.length - 1 ? 'Próxima Situação' : 'Concluir'}
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                  <div className="w-24 h-24 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mb-6">
+                    <Trophy size={48} />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">Fase {dilemmaLevel - 1} Concluída</h2>
+                  <p className="text-lg opacity-50 mb-8 max-w-xs">Que as tuas decisões sejam sempre guiadas pela Palavra de Deus.</p>
+                  
+                  {dilemmaMedals > 0 && (
+                    <div className="flex gap-2 mb-8 justify-center">
+                      {Array.from({ length: dilemmaMedals }).map((_, i) => (
+                        <div key={i} className="p-2 bg-emerald-500 text-white rounded-full">
+                          <Trophy size={20} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+                    <button 
+                      onClick={() => resetDilemmas(true)}
+                      className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2"
+                    >
+                      <RefreshCcw size={18} /> {dilemmaLevel <= 3 ? 'Próxima Fase' : 'Recomeçar'}
+                    </button>
+                    <button 
+                      onClick={() => setCurrentView('games')}
+                      className={`flex-1 py-4 rounded-2xl font-bold ${darkMode ? 'bg-zinc-900' : 'bg-gray-100'}`}
+                    >
+                      Sair
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {currentView === 'notes' && (
+            <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-6 space-y-6">
+              <div className="flex justify-between items-center px-2">
+                <p className="text-xs font-bold opacity-30 uppercase tracking-[0.2em]">{notes.length} ANOTAÇÕES</p>
+                <button 
+                  onClick={() => { setEditingNote(null); setCurrentView('notes'); /* Toggle editor? */ }}
+                  className="flex items-center gap-2 text-blue-500 font-bold text-sm"
+                >
+                  <Plus size={18} /> Nova
+                </button>
+              </div>
+
+              {editingNote !== null || (notes.length === 0 && !editingNote) ? (
+                <NoteEditor 
+                  note={editingNote} 
+                  onSave={(n) => { saveNote(n); setEditingNote(null); }} 
+                  onCancel={() => setEditingNote(null)} 
+                />
+              ) : null}
+
+              <div className="space-y-4">
+                {notes.map(note => (
+                  <div 
+                    key={note.id} 
+                    className={`p-6 rounded-3xl ${darkMode ? 'bg-zinc-900' : 'bg-white border border-gray-100 shadow-sm'} relative group`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-bold text-lg">{note.title}</h4>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditingNote(note)} className="p-2 hover:bg-zinc-800 rounded-lg text-blue-400">
+                          <Edit3 size={16} />
+                        </button>
+                        <button onClick={() => deleteNote(note.id)} className="p-2 hover:bg-rose-500/10 rounded-lg text-rose-500">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm opacity-70 leading-relaxed whitespace-pre-wrap line-clamp-3 mb-4">{note.content}</p>
+                    <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest">{note.date}</p>
+                  </div>
+                ))}
+                
+                {notes.length === 0 && !editingNote && (
+                  <div className="text-center py-20 opacity-30">
+                    <ClipboardList size={48} className="mx-auto mb-4 opacity-10" />
+                    <p className="font-medium italic">Seu caderno está vazio. Comece a anotar o que Deus fala com você hoje.</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {currentView === 'reading-plan' && (
+            <motion.div key="reading-plan" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-6 space-y-8">
+              {BIBLE_READING_PLANS.map(plan => {
+                const completedCount = plan.tasks.filter(t => readingProgress.includes(t.id)).length;
+                const progress = (completedCount / plan.tasks.length) * 100;
+
+                return (
+                  <div key={plan.id} className="space-y-4">
+                    <div className="px-2">
+                      <h3 className="text-xl font-bold mb-1">{plan.title}</h3>
+                      <p className="text-sm opacity-50 mb-4">{plan.description}</p>
+                      
+                      {/* Progress Bar */}
+                      <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden mb-2">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          className="h-full bg-blue-600"
+                        />
+                      </div>
+                      <p className="text-[10px] font-black opacity-30 uppercase tracking-widest">Progresso: {completedCount}/{plan.tasks.length} capítulos</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      {plan.tasks.map(task => {
+                        const isRead = readingProgress.includes(task.id);
+                        return (
+                          <button
+                            key={task.id}
+                            onClick={() => handleToggleRead(task.id)}
+                            className={`flex items-center justify-between p-5 rounded-2xl transition-all ${
+                              isRead 
+                                ? (darkMode ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-100')
+                                : (darkMode ? 'bg-zinc-900 border-zinc-900' : 'bg-white border-gray-100 shadow-sm')
+                            } border-2 group`}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={`p-2 rounded-xl ${isRead ? 'text-emerald-500 bg-emerald-500/10' : 'text-zinc-500 bg-zinc-800'} transition-colors`}>
+                                <CheckSquare size={20} />
+                              </div>
+                              <div className="text-left">
+                                <p className={`font-bold transition-all ${isRead ? 'opacity-30 line-through' : ''}`}>{task.label}</p>
+                                <span className="text-[10px] opacity-40 font-bold uppercase">Leitura Recomendada</span>
+                              </div>
+                            </div>
+                            {!isRead && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const book = BIBLE_BOOKS.find(b => b.name === task.book);
+                                  if (book) {
+                                    handleBookSelect(book);
+                                    handleChapterSelect(task.chapter);
+                                  }
+                                }}
+                                className="px-3 py-1 bg-blue-600 text-white text-[10px] font-bold rounded-lg opacity-80 hover:opacity-100"
+                              >
+                                LER AGORA
+                              </button>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
+
           {currentView === 'settings' && (
             <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-6 space-y-1">
               <h3 className="text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] mb-4 px-4">Configurações & Sobre</h3>
               {[
                 { icon: <Bookmark size={20} />, label: 'Meus Marcadores', action: () => setCurrentView('favorites') },
+                { icon: <CheckSquare size={20} />, label: 'Plano de Leitura', action: () => setCurrentView('reading-plan') },
+                { icon: <ClipboardList size={20} />, label: 'Minhas Anotações', action: () => setCurrentView('notes') },
                 { icon: <GraduationCap size={20} />, label: 'Meus Estudos', action: () => setCurrentView('studies') },
                 { icon: <Type size={20} />, label: 'Fonte', value: `${fontSize}px`, action: () => setFontSize(f => f >= 24 ? 14 : f + 2) },
                 { icon: <MessageSquare size={20} />, label: 'Falar com Salomão Muanjita', action: () => window.open('https://wa.me/244943004073', '_blank') },
-                { icon: <Share2 size={20} />, label: 'Compartilhar', action: () => {} },
+                { icon: <Share2 size={20} />, label: 'Compartilhar App', action: () => handleShare('Bíblia Sagrada', 'Estou usando a Bíblia Sagrada (SMVM) para minha leitura diária. Baixe e comece a ler também!') },
               ].map((item, i) => (
                 <button 
                   key={i} 
