@@ -35,5 +35,16 @@ export const BIBLE_READING_PLANS: ReadingPlan[] = [
       { id: 'p2-t2', book: 'Provérbios', chapter: 2, label: 'Provérbios 2' },
       { id: 'p2-t3', book: 'Eclesiastes', chapter: 1, label: 'Eclesiastes 1' },
     ]
+  },
+  {
+    id: 'p3',
+    title: 'Epístolas Curtas',
+    description: 'Leia as cartas breves mas poderosas do Novo Testamento.',
+    tasks: [
+      { id: 'p3-t1', book: 'Filemon', chapter: 1, label: 'Filemon' },
+      { id: 'p3-t2', book: '2 João', chapter: 1, label: '2 João' },
+      { id: 'p3-t3', book: '3 João', chapter: 1, label: '3 João' },
+      { id: 'p3-t4', book: 'Judas', chapter: 1, label: 'Judas' },
+    ]
   }
 ];

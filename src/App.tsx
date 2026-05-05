@@ -31,7 +31,8 @@ import {
   CheckSquare,
   Plus,
   Trash2,
-  Edit3
+  Edit3,
+  WifiOff
 } from 'lucide-react';
 import { BIBLE_BOOKS, Book } from './data/bible-metadata';
 import { BIBLE_STUDIES, Study } from './data/bible-studies';
@@ -40,6 +41,8 @@ import { BIBLE_DILEMMAS, Dilemma } from './data/bible-dilemmas';
 import { BIBLE_READING_PLANS, ReadingPlan } from './data/reading-plans';
 import { useBible, Verse, Chapter } from './hooks/useBible';
 import { useAIPreacher } from './hooks/useAIPreacher';
+
+import { STATIC_STUDIES_CONTENT } from './data/static-studies-content';
 
 type View = 'home' | 'bible' | 'search' | 'favorites' | 'settings' | 'reader' | 'preacher' | 'studies' | 'study-detail' | 'games' | 'quiz' | 'dilemmas' | 'notes' | 'reading-plan';
 
@@ -59,7 +62,54 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
   const [chapterContent, setChapterContent] = useState<Chapter | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Verse[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const feelingsMap: Record<string, { title: string, content: string }> = {
+    'decepcionado': {
+      title: 'Superando a Decepção',
+      content: 'A Bíblia diz em Salmos 34:18 que "Perto está o Senhor dos que têm o coração quebrantado". Quando pessoas ou situações nos falham, Deus permanece fiel. Romanos 8:28 nos lembra que todas as coisas cooperam para o bem dos que amam a Deus. Não desanime, sua esperança está no Senhor, não nos homens.'
+    },
+    'triste': {
+      title: 'Consolo na Tristeza',
+      content: 'Jesus disse: "Bem-aventurados os que choram, porque eles serão consolados" (Mateus 5:4). A tristeza é uma estação, não sua morada permanente. Salmos 30:5 promete que "o choro pode durar uma noite, mas a alegria vem pela manhã". Entregue seu fardo a Ele hoje.'
+    },
+    'deprimido': {
+      title: 'Luz na Depressão',
+      content: 'A Bíblia reconhece momentos de profunda angústia. Elias e Davi passaram por isso. Salmos 42:11 diz: "Por que estás abatida, ó minha alma? Espera em Deus, pois ainda o louvarei". Ore por luz e busque ajuda, pois Deus opera através da oração e de Seus servos. Você tem valor infinito para o Criador.'
+    },
+    'ansioso': {
+      title: 'Paz para a Ansiedade',
+      content: 'Filipenses 4:6-7 nos exorta: "Não estejais inquietos por coisa alguma; antes as vossas petições sejam em tudo conhecidas diante de Deus... E a paz de Deus, que excede todo o entendimento, guardará os vossos corações". Respire e confie que Ele cuida do amanhã.'
+    },
+    'sozinho': {
+      title: 'Você Nunca Está Só',
+      content: 'Deus prometeu em Hebreus 13:5: "Não te deixarei, nem te desampararei". Mesmo quando não sentimos ninguém por perto, o Espírito Santo, o Consolador, está em nós. Você é parte da família de Deus.'
+    }
+  };
+
+  const handleFeelingSelect = (feeling: string) => {
+    const response = feelingsMap[feeling];
+    if (response) {
+      setStudyContent(`# ${response.title}\n\n${response.content}`);
+      setCurrentView('study-detail');
+    }
+  };
   const [dailyVerse, setDailyVerse] = useState<Verse | null>(null);
   const [darkMode, setDarkMode] = useState(true);
   const [fontSize, setFontSize] = useState(18);
@@ -106,7 +156,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const { fetchChapter, getDailyVerse, loading: bibleLoading, error: bibleError } = useBible();
+  const { fetchChapter, fetchChapterWithAI, getDailyVerse, searchBible, loading: bibleLoading, error: bibleError } = useBible();
   const { askQuestion, generateStudy, loading: aiLoading } = useAIPreacher();
 
   useEffect(() => {
@@ -128,12 +178,30 @@ export default function App() {
   const handleBookSelect = (book: Book) => {
     setSelectedBook(book);
     setSelectedChapter(null);
+    if (book.chapters === 1) {
+      handleChapterSelect(1, book);
+    }
   };
 
-  const handleChapterSelect = async (chapter: number) => {
-    if (!selectedBook) return;
+  const handleChapterSelect = async (chapter: number, bookOverride?: Book) => {
+    const book = bookOverride || selectedBook;
+    if (!book) return;
     setSelectedChapter(chapter);
-    const content = await fetchChapter(selectedBook.name, chapter);
+    
+    // Initial fetch
+    let content = await fetchChapter(book.name, chapter);
+    
+    // List of books that are often returned incomplete (only 1 verse) by some public APIs
+    const oneChapterBooks = ['judas', 'filemon', 'obadias', '2 joão', '3 joão'];
+    const isOneChapterBook = oneChapterBooks.includes(book.name.toLowerCase());
+
+    // If it's a one-chapter book and we have suspiciously few verses, or it's empty
+    if (isOneChapterBook && (!content || content.verses.length < 5)) {
+      console.log(`${book.name} incompleto detectado. Chamando IA para completar...`);
+      const aiContent = await fetchChapterWithAI(book.name, chapter);
+      if (aiContent) content = aiContent;
+    }
+    
     setChapterContent(content);
     setCurrentView('reader');
   };
@@ -141,12 +209,19 @@ export default function App() {
   const handleGetBack = () => {
     if (currentView === 'reader') {
       setCurrentView('bible');
+      setSelectedChapter(null);
+      // If it's a one-chapter book, go back to book selection automatically
+      if (selectedBook && selectedBook.chapters === 1) {
+        setSelectedBook(null);
+      }
     } else if (currentView === 'study-detail') {
       setCurrentView('studies');
     } else if (currentView === 'notes' || currentView === 'reading-plan') {
       setCurrentView('home');
     } else if (selectedBook && !selectedChapter) {
-        setSelectedBook(null);
+      setSelectedBook(null);
+    } else {
+      setCurrentView('home');
     }
   };
 
@@ -166,8 +241,33 @@ export default function App() {
     setSelectedStudy(study);
     setCurrentView('study-detail');
     setStudyContent(null);
+    
+    // 1. Check for static content first (always offline)
+    const staticItem = STATIC_STUDIES_CONTENT.find(s => s.id === study.id);
+    if (staticItem) {
+      setStudyContent(staticItem.content);
+      return;
+    }
+
+    // 2. Check local cache for AI studies
+    const cacheKey = `study_cache_${study.id}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      setStudyContent(cached);
+      return;
+    }
+
+    // 3. Fallback to AI (requires internet)
+    if (!isOnline) {
+      // Content remains null, showing the "requires internet" UI
+      return;
+    }
+
     const content = await generateStudy(study.title, study.target);
-    setStudyContent(content || null);
+    if (content) {
+      setStudyContent(content);
+      localStorage.setItem(cacheKey, content);
+    }
   };
 
   const handleAnswer = (index: number) => {
@@ -178,6 +278,23 @@ export default function App() {
       setScore(s => s + 1);
     }
     setShowExplanation(true);
+  };
+
+  const handleShareVerse = async (verse: Verse) => {
+    const text = `"${verse.text}"\n— ${verse.book_name} ${verse.chapter}:${verse.verse}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Versículo do Dia',
+          text: text,
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert('Copiado para a área de transferência!');
+      }
+    } catch (err) {
+      console.error('Sharing failed', err);
+    }
   };
 
   const feedbackMessage = useMemo(() => {
@@ -295,6 +412,25 @@ export default function App() {
     }
   };
 
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    if (!isOnline) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    const results = await searchBible(searchQuery);
+    setSearchResults(results);
+    setIsSearching(false);
+  };
+
+  const isChapterOffline = useMemo(() => {
+    if (!selectedBook || !selectedChapter) return false;
+    return !!localStorage.getItem(`bible_cache_${selectedBook.name}_${selectedChapter}`);
+  }, [selectedBook, selectedChapter, currentView]);
+
   const titleText = useMemo(() => {
     if (currentView === 'reader') return `${selectedBook?.name} ${selectedChapter}`;
     if (currentView === 'bible' && selectedBook) return selectedBook.name;
@@ -379,6 +515,9 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-gray-50 text-gray-900'} font-sans transition-colors duration-300`}>
+      {/* Connectivity Indicator Bar */}
+      <div className={`h-1.5 w-full sticky top-0 z-[60] transition-colors duration-500 ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+
       {/* Header */}
       <header className={`p-4 sticky top-0 z-40 flex justify-between items-center ${darkMode ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/80 border-gray-200'} backdrop-blur-md border-b`}>
         <div className="flex items-center gap-3">
@@ -423,25 +562,63 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="py-6 space-y-8"
             >
-              {/* Daily Verse Card */}
+              {/* Moody Section - How are you feeling? */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="px-6 mb-8"
+            >
+              <h3 className="text-sm font-black uppercase opacity-40 mb-4 tracking-widest">Como você se sente hoje?</h3>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+                {['decepcionado', 'triste', 'deprimido', 'ansioso', 'sozinho', 'grato'].map((feeling) => (
+                  <button
+                    key={feeling}
+                    onClick={() => handleFeelingSelect(feeling)}
+                    className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
+                      darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-100 shadow-sm'
+                    } active:scale-95 capitalize`}
+                  >
+                    {feeling}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Daily Verse Card */}
               <div className={`p-6 rounded-3xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-gray-100'} shadow-xl`}>
                 <div className="flex justify-between items-start mb-4">
                   <span className={`text-xs font-bold uppercase tracking-widest ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Versículo do Dia</span>
-                  <button 
-                    onClick={() => dailyVerse && handleShare('Versículo do Dia', `"${dailyVerse.text}" - ${dailyVerse.book_name} ${dailyVerse.chapter}:${dailyVerse.verse}`)}
-                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors opacity-50"
-                  >
-                    <Share2 size={18} />
-                  </button>
                 </div>
                 {dailyVerse ? (
                   <>
                     <p className="text-xl md:text-2xl font-serif italic mb-4 leading-relaxed">
                       "{dailyVerse.text.trim()}"
                     </p>
-                    <p className="text-right font-medium opacity-70">
-                      — {dailyVerse.book_name} {dailyVerse.chapter}:{dailyVerse.verse}
-                    </p>
+                    <div className="flex justify-between items-end mb-6">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => dailyVerse && handleShare('Versículo do Dia', `"${dailyVerse.text}"\n— ${dailyVerse.book_name} ${dailyVerse.chapter}:${dailyVerse.verse}`)}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-bold transition-all"
+                        >
+                          <Share2 size={14} /> Compartilhar
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            if (!dailyVerse) return;
+                            setCurrentView('preacher');
+                            const q = `Pode me explicar a profundidade e o contexto de ${dailyVerse.book_name} ${dailyVerse.chapter}:${dailyVerse.verse}? "${dailyVerse.text}"`;
+                            setInputMessage(q);
+                            // We don't call handleSendMessage directly because it's better if user sees the message being sent
+                          }}
+                          className={`flex items-center gap-2 px-4 py-2 ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'} rounded-full text-xs font-bold transition-all`}
+                        >
+                          <MessageSquare size={14} /> Sabedoria de Salomão
+                        </button>
+                      </div>
+                      <p className="text-right font-medium opacity-70">
+                        — {dailyVerse.book_name} {dailyVerse.chapter}:{dailyVerse.verse}
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <div className="h-24 flex items-center justify-center italic opacity-50">Carregando alimento espiritual...</div>
@@ -546,6 +723,16 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="py-4"
             >
+              <div className="mb-6">
+                <button 
+                  onClick={() => setCurrentView('search')}
+                  className={`w-full flex items-center gap-3 p-4 rounded-2xl ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white shadow-sm border border-gray-100'} text-sm font-medium opacity-60 hover:opacity-100 transition-all`}
+                >
+                  <Search size={18} />
+                  <span>Pesquisar versículos ou palavras...</span>
+                </button>
+              </div>
+
               {!selectedBook ? (
                 <div className="space-y-1">
                   <div className="grid grid-cols-1 gap-1">
@@ -567,7 +754,16 @@ export default function App() {
                   </div>
                 </div>
               ) : !selectedChapter ? (
-                <div className="py-2">
+                <div className="py-2 space-y-6">
+                  <div className="flex justify-between items-center px-2">
+                    <button 
+                      onClick={() => setSelectedBook(null)}
+                      className="flex items-center gap-2 text-xs font-bold text-blue-500 hover:opacity-70 transition-opacity"
+                    >
+                      <ChevronLeft size={16} /> Voltar para lista de livros
+                    </button>
+                    <span className="text-[10px] font-black opacity-30 uppercase tracking-widest">{selectedBook.chapters} Capítulos</span>
+                  </div>
                    <div className="grid grid-cols-5 gap-3">
                     {Array.from({ length: selectedBook.chapters }, (_, i) => i + 1).map((chapter) => (
                       <button
@@ -581,6 +777,79 @@ export default function App() {
                   </div>
                 </div>
               ) : null}
+            </motion.div>
+          )}
+
+          {currentView === 'search' && (
+            <motion.div 
+              key="search"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="py-4"
+            >
+              <div className={`p-2 rounded-3xl mb-6 ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white shadow-lg border border-gray-100'}`}>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="text" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    placeholder="Busque por palavras ou temas..."
+                    className="flex-1 bg-transparent p-3 outline-none text-sm font-bold"
+                  />
+                  <button 
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="p-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-colors"
+                  >
+                    {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {searchResults.map((v, i) => (
+                  <motion.div 
+                    key={`${v.book_name}-${v.chapter}-${v.verse}-${i}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    onClick={() => {
+                      const book = BIBLE_BOOKS.find(b => b.name === v.book_name);
+                      if (book) {
+                        setSelectedBook(book);
+                        handleChapterSelect(v.chapter, book);
+                      }
+                    }}
+                    className={`p-6 rounded-3xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-100 shadow-sm'} cursor-pointer hover:border-blue-500/30 transition-all`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                       <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">{v.book_name} {v.chapter}:{v.verse}</span>
+                       <ChevronRight size={14} className="opacity-30" />
+                    </div>
+                    <p className="text-sm opacity-80 leading-relaxed font-serif">"{v.text}"</p>
+                  </motion.div>
+                ))}
+                {searchResults.length === 0 && !isSearching && searchQuery.length > 0 && (
+                  <div className="text-center py-20 px-8">
+                    {!isOnline ? (
+                      <>
+                        <WifiOff size={40} className="mx-auto mb-4 opacity-20 text-rose-500" />
+                        <p className="text-sm font-bold uppercase tracking-widest opacity-50 mb-2">Busca Indisponível</p>
+                        <p className="text-xs opacity-30">A pesquisa bíblica requer conexão com a internet para encontrar versículos específicos.</p>
+                      </>
+                    ) : (
+                      <div className="opacity-30 text-sm">Nenhum resultado encontrado.</div>
+                    )}
+                  </div>
+                )}
+                {searchResults.length === 0 && !isSearching && searchQuery.length === 0 && (
+                  <div className="text-center py-20 opacity-20">
+                    <Search size={40} className="mx-auto mb-4" />
+                    <p className="text-xs font-bold uppercase tracking-widest">Digite para pesquisar</p>
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -599,7 +868,14 @@ export default function App() {
                 </div>
               ) : chapterContent ? (
                 <div className="space-y-6 reader-text" style={{ fontSize: `${fontSize}px` }}>
-                  <h2 className="text-3xl font-serif text-center mb-10 opacity-30 italic">Capítulo {selectedChapter}</h2>
+                  <div className="flex justify-between items-center opacity-30 italic mb-8">
+                    <h2 className="text-3xl font-serif">Capítulo {selectedChapter}</h2>
+                    {isChapterOffline && (
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-tighter">
+                        <CheckCircle2 size={12} /> Disponível Offline
+                      </div>
+                    )}
+                  </div>
                   <div className="space-y-6">
                     {chapterContent.verses.map((v) => (
                       <div key={v.verse} className="flex flex-col gap-1 group border-b border-transparent hover:border-blue-500/10 pb-4 transition-all">
@@ -616,6 +892,26 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                  
+                  {chapterContent && chapterContent.verses.length < 5 && (
+                    <div className="mt-12 text-center p-8 border-2 border-dashed border-zinc-500/10 rounded-3xl">
+                      <p className="text-sm opacity-50 mb-4">Este capítulo parece estar incompleto ou falhou ao carregar.</p>
+                      <button 
+                        onClick={async () => {
+                          if (!selectedBook || !selectedChapter) return;
+                          const aiContent = await fetchChapterWithAI(selectedBook.name, selectedChapter);
+                          if (aiContent) {
+                            setChapterContent(aiContent);
+                            const cacheKey = `bible_cache_${selectedBook.name}_${selectedChapter}`;
+                            localStorage.setItem(cacheKey, JSON.stringify(aiContent));
+                          }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-blue-600/20 active:scale-95"
+                      >
+                        Completar com Sabedoria Artificial
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-20 opacity-50">
@@ -717,19 +1013,30 @@ export default function App() {
                 ))}
               </div>
               <div className="space-y-2">
-                {BIBLE_STUDIES.filter(s => s.target === studiesFilter).map(study => (
-                  <button
-                    key={study.id}
-                    onClick={() => handleStudySelect(study)}
-                    className={`w-full flex items-center justify-between p-5 rounded-2xl transition-colors text-left group ${darkMode ? 'bg-zinc-900/50 hover:bg-zinc-900' : 'bg-white border border-gray-100 hover:bg-blue-50/30 shadow-sm'}`}
-                  >
-                    <div>
-                      <span className="text-[10px] font-bold uppercase opacity-40 mb-1 block tracking-widest">{study.category}</span>
-                      <p className="font-bold">{study.title}</p>
-                    </div>
-                    <ChevronRight size={18} className="opacity-20 group-hover:opacity-100" />
-                  </button>
-                ))}
+                {BIBLE_STUDIES.filter(s => s.target === studiesFilter).map(study => {
+                  const isStatic = STATIC_STUDIES_CONTENT.some(s => s.id === study.id);
+                  const isCached = !!localStorage.getItem(`study_cache_${study.id}`);
+                  const isOfflineReady = isStatic || isCached;
+                  return (
+                    <button
+                      key={study.id}
+                      onClick={() => handleStudySelect(study)}
+                      className={`w-full flex items-center justify-between p-5 rounded-2xl transition-colors text-left group ${darkMode ? 'bg-zinc-900/50 hover:bg-zinc-900' : 'bg-white border border-gray-100 hover:bg-blue-50/30 shadow-sm'}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold uppercase opacity-40 tracking-widest">{study.category}</span>
+                          {isOfflineReady && (
+                            <span className="text-[8px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Pronto Offline</span>
+                          )}
+                        </div>
+                        <p className="font-bold">{study.title}</p>
+                        {study.shortDescription && <p className="text-xs opacity-50 mt-1 line-clamp-1">{study.shortDescription}</p>}
+                      </div>
+                      <ChevronRight size={18} className="opacity-20 group-hover:opacity-100" />
+                    </button>
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -754,15 +1061,32 @@ export default function App() {
               {aiLoading ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
                   <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-                  <p className="text-sm italic font-medium animate-pulse">Preparando conteúdo para seu crescimento...</p>
+                  <p className="text-sm italic font-medium animate-pulse text-center px-6">Buscando na sabedoria bíblica...<br/>(Isso requer internet)</p>
                 </div>
               ) : studyContent ? (
                 <div className="prose prose-sm dark:prose-invert max-w-none space-y-6">
-                  {studyContent.split('\n').map((line, i) => (
-                    <p key={i} className="leading-relaxed whitespace-pre-wrap">{line}</p>
-                  ))}
+                  {studyContent.startsWith('#') ? (
+                    // Simple markdown-like rendering for static content
+                    <div className="space-y-4">
+                      {studyContent.split('\n').map((line, i) => {
+                        if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold text-blue-500">{line.replace('# ', '')}</h1>;
+                        if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold mt-6">{line.replace('## ', '')}</h2>;
+                        if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-bold mt-4">{line.replace('### ', '')}</h3>;
+                        return <p key={i} className="leading-relaxed whitespace-pre-wrap">{line}</p>;
+                      })}
+                    </div>
+                  ) : (
+                    studyContent.split('\n').map((line, i) => (
+                      <p key={i} className="leading-relaxed whitespace-pre-wrap">{line}</p>
+                    ))
+                  )}
                 </div>
-              ) : null}
+              ) : !aiLoading && !studyContent && (
+                <div className="text-center py-20 px-8">
+                  <WifiOff size={48} className="mx-auto mb-4 opacity-20" />
+                  <p className="font-medium opacity-50">Este estudo requer conexão com a internet para ser gerado pela primeira vez.</p>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1172,7 +1496,7 @@ export default function App() {
               ))}
               
               <div className={`mt-12 p-6 rounded-3xl text-center ${darkMode ? 'bg-zinc-900/50' : 'bg-gray-100'}`}>
-                <h4 className="font-bold text-sm mb-1">Bíblia Sagrada Lite</h4>
+                <h4 className="font-bold text-sm mb-1">Bíblia Sagrada</h4>
                 <p className="text-[10px] opacity-40 uppercase font-black">Versão 1.0.0</p>
                 <div className="mt-4 pt-4 border-t border-zinc-800">
                   <p className="text-[10px] opacity-40 uppercase font-bold tracking-widest">Organizado por</p>

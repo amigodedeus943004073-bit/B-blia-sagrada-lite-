@@ -4,18 +4,19 @@ export interface Study {
   title: string;
   target: 'convert' | 'mature';
   category: string;
+  shortDescription?: string;
 }
 
 export const BIBLE_STUDIES: Study[] = [
   // Recém Convertidos
-  { id: 'rc1', title: 'A Importância do Novo Nascimento', target: 'convert', category: 'Fundamentos' },
-  { id: 'rc2', title: 'O Que é a Salvação?', target: 'convert', category: 'Fundamentos' },
-  { id: 'rc3', title: 'Como Ler a Bíblia', target: 'convert', category: 'Crescimento' },
-  { id: 'rc4', title: 'A Importância da Oração', target: 'convert', category: 'Crescimento' },
-  { id: 'rc5', title: 'O Batismo nas Águas', target: 'convert', category: 'Práticas' },
-  { id: 'rc6', title: 'A Ceia do Senhor', target: 'convert', category: 'Práticas' },
-  { id: 'rc7', title: 'Vencendo as Tentações', target: 'convert', category: 'Vida Cristã' },
-  { id: 'rc8', title: 'A Identidade em Cristo', target: 'convert', category: 'Vida Cristã' },
+  { id: 'rc1', title: 'A Importância do Novo Nascimento', target: 'convert', category: 'Fundamentos', shortDescription: 'Entenda o que Jesus ensinou sobre nascer de novo em João 3.' },
+  { id: 'rc2', title: 'O Que é a Salvação?', target: 'convert', category: 'Fundamentos', shortDescription: 'O plano de redenção de Deus para a humanidade pela graça.' },
+  { id: 'rc3', title: 'Como Ler a Bíblia', target: 'convert', category: 'Crescimento', shortDescription: 'Dicas práticas para iniciar sua jornada de leitura da Palavra.' },
+  { id: 'rc4', title: 'A Importância da Oração', target: 'convert', category: 'Crescimento', shortDescription: 'Comunicação direta com o Criador: por que e como orar.' },
+  { id: 'rc5', title: 'O Batismo nas Águas', target: 'convert', category: 'Práticas', shortDescription: 'O significado público da sua decisão por Cristo.' },
+  { id: 'rc6', title: 'A Ceia do Senhor', target: 'convert', category: 'Práticas', shortDescription: 'Lembrança e comunhão através do pão e do cálice.' },
+  { id: 'rc7', title: 'Vencendo as Tentações', target: 'convert', category: 'Vida Cristã', shortDescription: 'Como resistir ao mal usando o exemplo de Jesus no deserto.' },
+  { id: 'rc8', title: 'A Identidade em Cristo', target: 'convert', category: 'Vida Cristã', shortDescription: 'Quem você realmente é agora que pertence a Jesus.' },
   { id: 'rc9', title: 'O Papel do Espírito Santo', target: 'convert', category: 'Doutrina' },
   { id: 'rc10', title: 'Vivendo em Comunidade (Igreja)', target: 'convert', category: 'Comunhão' },
   { id: 'rc11', title: 'A Graça de Deus', target: 'convert', category: 'Fundamentos' },
@@ -36,6 +37,7 @@ export const BIBLE_STUDIES: Study[] = [
   
   // Antigos na Fé
   { id: 'mt1', title: 'Teologia Sistemática: Introdução', target: 'mature', category: 'Teologia' },
+  { id: 'jude1', title: 'A Epístola de Judas: Batalhando pela Fé', target: 'mature', category: 'Novo Testamento', shortDescription: 'Um alerta contra os falsos mestres e a exortação para permanecer firmes.' },
   { id: 'mt2', title: 'A Escatologia Bíblica', target: 'mature', category: 'Profecia' },
   { id: 'mt3', title: 'Liderança Cristã', target: 'mature', category: 'Ministério' },
   { id: 'mt4', title: 'Defendendo a Fé (Apologética)', target: 'mature', category: 'Defesa' },
